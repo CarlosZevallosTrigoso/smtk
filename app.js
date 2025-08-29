@@ -5,6 +5,8 @@ const socket = io('https://smtk-server.onrender.com');
 const messagesDiv = document.getElementById('messages');
 const senderInputDiv = document.getElementById('sender-input');
 const readerInputDiv = document.getElementById('reader-input');
+const faPromptSpan = document.getElementById('fa-prompt');
+const fbPromptSpan = document.getElementById('fb-prompt');
 const messageInput = document.getElementById('message-input');
 const passwordInput = document.getElementById('password-input');
 const sendButton = document.getElementById('send-button');
@@ -22,32 +24,58 @@ window.onload = () => {
     if (hash === 'fa') {
         myRole = 'fa';
         senderInputDiv.style.display = 'flex'; // Mostrar interfaz de emisor
+        faPromptSpan.textContent = 'fa@smtk:~ $ ';
         displayMessage('System: Rol asignado: fa (Emisor). Esperando conexión...');
     } else if (hash === 'fb') {
         myRole = 'fb';
         readerInputDiv.style.display = 'flex'; // Mostrar interfaz de receptor
+        fbPromptSpan.textContent = 'fb@smtk:~ $ ';
         displayMessage('System: Rol asignado: fb (Receptor). Esperando conexión...');
     } else {
-        displayMessage('System: URL inválida. Usa #fa o #fb al final para asignar un rol.');
+        displayMessage('System: URL inválida. Usa #fa o #fb al final para asignar un rol. Ej: yoururl.com/#fa', 'system-message');
         return;
     }
 
-    // Conectar al servidor de señalización
+    connectToServer(); // Iniciar la conexión al servidor de señalización
+};
+
+function connectToServer() {
     socket.on('connect', () => {
         displayMessage('System: Conectado al servidor de señalización...');
-        setupPeer(myRole === 'fa'); // fa inicia la conexión
+
+        // Lógica de "aviso"
+        if (myRole === 'fb') {
+            socket.emit('fb_is_ready'); // fb avisa al servidor que está listo
+            displayMessage('System: Avisando a fa que fb está listo...', 'system-message');
+        }
     });
 
+    // fa escucha el aviso de fb
+    if (myRole === 'fa') {
+        socket.on('fb_is_ready', () => {
+            displayMessage('System: fb está conectado. Iniciando conexión P2P...', 'system-message');
+            setupPeer(true); // Solo ahora fa inicia la conexión
+        });
+    }
+
     socket.on('signal', (data) => {
-        if (!peer) {
-            setupPeer(myRole === 'fa');
+        if (!peer || peer.destroyed) { // Si no hay peer o está destruido, crear uno (para fb)
+            setupPeer(false);
         }
         peer.signal(data);
     });
-};
 
+    socket.on('disconnect', () => {
+        displayMessage('System: Desconectado del servidor de señalización. Reintentando...', 'system-message');
+        // Podrías añadir lógica de reconexión aquí si lo deseas
+    });
+}
 
 function setupPeer(initiator) {
+    if (peer && !peer.destroyed) { // Si ya hay un peer activo, no crear otro
+        return;
+    }
+
     peer = new SimplePeer({
         initiator: initiator,
         trickle: false
@@ -58,34 +86,38 @@ function setupPeer(initiator) {
     });
 
     peer.on('connect', () => {
-        displayMessage(`System: Conexión P2P establecida. [user: ${myRole}]`);
+        displayMessage(`System: Conexión P2P establecida. [user: ${myRole}]`, 'system-message');
         // Limpiar los campos de input al conectar
         messageInput.value = '';
         passwordInput.value = '';
         decryptPasswordInput.value = '';
     });
 
-    // Manejo de datos entrantes
     peer.on('data', async (data) => {
         const parsedData = JSON.parse(new TextDecoder().decode(data));
 
-        if (parsedData.type === 'message') {
-            if (myRole === 'fa') {
-                // fa no recibe mensajes encriptados, esto no debería pasar
-                displayMessage('System: Error - fa recibió un mensaje encriptado inesperado.');
-            } else if (myRole === 'fb') {
-                // fb recibe un mensaje encriptado
-                displayMessage('System: Mensaje encriptado recibido. Introduce la contraseña para leerlo.');
-                currentEncryptedPayload = parsedData.payload; // Guardar el payload encriptado
-                currentPayloadId = parsedData.id; // Guardar el ID para la confirmación
-                decryptPasswordInput.focus(); // Enfocar el campo de contraseña
-            }
-        } else if (parsedData.type === 'read_confirmation') {
-            if (myRole === 'fa') {
-                // fa recibe una confirmación de lectura
-                displayMessage(`System: Mensaje [ID: ${parsedData.id.substring(0, 8)}...] leído por fb.`, 'read-confirmation');
-            }
+        if (parsedData.type === 'message' && myRole === 'fb') {
+            displayMessage('System: Mensaje encriptado recibido. Introduce la contraseña para leerlo.', 'system-message');
+            currentEncryptedPayload = parsedData.payload; // Guardar el payload encriptado
+            currentPayloadId = parsedData.id; // Guardar el ID para la confirmación
+            decryptPasswordInput.focus(); // Enfocar el campo de contraseña
+        } else if (parsedData.type === 'read_confirmation' && myRole === 'fa') {
+            displayMessage(`System: Mensaje [ID: ${parsedData.id.substring(0, 8)}...] leído por fb.`, 'read-confirmation');
         }
+    });
+
+    peer.on('close', () => {
+        displayMessage('System: El otro usuario se ha desconectado.', 'system-message');
+        peer.destroy(); // Limpiar el peer
+        peer = null;
+        currentEncryptedPayload = null; // Limpiar cualquier payload pendiente
+    });
+
+    peer.on('error', (err) => {
+        displayMessage(`System: Error de conexión P2P - ${err.message}`, 'system-message');
+        if (peer && !peer.destroyed) peer.destroy();
+        peer = null;
+        currentEncryptedPayload = null;
     });
 }
 
@@ -126,7 +158,7 @@ async function decryptMessage(payload, password) {
     return new TextDecoder().decode(decryptedData);
 }
 
-// --- Lógica de Envío (fa) ---
+// --- Lógica de Envío (Solo fa) ---
 sendButton.addEventListener('click', async () => {
     if (myRole !== 'fa') {
         displayMessage('Error: Solo fa puede enviar mensajes.', 'system-message');
@@ -153,7 +185,7 @@ sendButton.addEventListener('click', async () => {
     }
 });
 
-// --- Lógica de Lectura (fb) ---
+// --- Lógica de Lectura (Solo fb) ---
 decryptButton.addEventListener('click', async () => {
     if (myRole !== 'fb') {
         displayMessage('Error: Solo fb puede leer mensajes.', 'system-message');
@@ -164,8 +196,6 @@ decryptButton.addEventListener('click', async () => {
         try {
             const decrypted = await decryptMessage(currentEncryptedPayload, password);
             displayMessage(`fb@smtk:~ $ ${decrypted}`); // Muestra el mensaje desencriptado
-            currentEncryptedPayload = null; // Limpiar mensaje después de leer
-            decryptPasswordInput.value = ''; // Limpiar el campo de contraseña
 
             // Enviar confirmación de lectura a fa
             peer.send(new TextEncoder().encode(JSON.stringify({
@@ -173,6 +203,10 @@ decryptButton.addEventListener('click', async () => {
                 id: currentPayloadId
             })));
             displayMessage('System: Confirmación de lectura enviada.', 'read-confirmation');
+
+            currentEncryptedPayload = null; // Limpiar mensaje después de leer
+            currentPayloadId = null; // Limpiar el ID
+            decryptPasswordInput.value = ''; // Limpiar el campo de contraseña
 
         } catch (e) {
             displayMessage('Error: Contraseña incorrecta o mensaje corrupto.', 'system-message');
@@ -182,7 +216,6 @@ decryptButton.addEventListener('click', async () => {
         displayMessage('System: No hay mensaje para leer o contraseña vacía.', 'system-message');
     }
 });
-
 
 // --- Utilidad para mostrar mensajes en la terminal ---
 function displayMessage(message, type = '') {
