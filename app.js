@@ -1,77 +1,135 @@
-// 🔽🔽🔽 Pega aquí la URL de tu servidor de Render 🔽🔽🔽
-const socket = io('https://smtk-server.onrender.com', { autoConnect: false });
+// --- Conexión al servidor de señalización ---
+const socket = io('https-:-//smtk-server.onrender.com', { autoConnect: false });
 
 // --- Referencias a elementos del DOM ---
 const messagesDiv = document.getElementById('messages');
 const mainInput = document.getElementById('main-input');
 const promptSpan = document.getElementById('prompt');
-const inputContainer = document.getElementById('input-container');
 
 // --- Variables de estado de la aplicación ---
-let myRole = null; // 'emisor' o 'receptor'
+let myRole = null;
 let appState = 'AWAITING_ROLE'; // Controla el flujo de la aplicación
-let tempMessage = ''; // Almacena el mensaje del emisor temporalmente
+let tempMessage = '';
 let peer;
 let currentEncryptedPayload = null;
 let currentPayloadId = null;
 
-// --- Contraseñas de rol (hardcoded) ---
+// --- Contraseñas de rol ---
 const SENDER_PASSWORD = 'carlos123';
 const RECEIVER_PASSWORD = 'carlosxyz';
 
 // --- Inicio de la aplicación ---
 window.onload = () => {
-    inputContainer.style.display = 'none'; // Ocultar input al inicio
-    authenticateUser();
+    displayMessage('Bienvenido a smtk.');
+    updatePrompt(); // Configurar el primer prompt
 };
 
-async function authenticateUser() {
-    // 1. Preguntar el rol
-    const roleInput = window.prompt("emites o recibes (e/r)");
-    if (roleInput && roleInput.toLowerCase() === 'e') {
-        myRole = 'emisor';
-    } else if (roleInput && roleInput.toLowerCase() === 'r') {
-        myRole = 'receptor';
-    } else {
-        displayMessage('Error: rol no válido. Recarga la página.', 'error-message');
-        return;
+function updatePrompt() {
+    mainInput.type = 'text'; // Por defecto
+    switch (appState) {
+        case 'AWAITING_ROLE':
+            promptSpan.textContent = 'emites o recibes (e/r):';
+            break;
+        case 'AWAITING_ROLE_AUTH':
+            promptSpan.textContent = `contraseña para '${myRole}':`;
+            mainInput.type = 'password';
+            break;
+        case 'AWAITING_MESSAGE':
+            promptSpan.textContent = 'mensaje:';
+            break;
+        case 'AWAITING_MSG_PASSWORD':
+            promptSpan.textContent = `contraseña para el mensaje:`;
+            mainInput.type = 'password';
+            break;
+        case 'IDLE_RECEIVER':
+            promptSpan.textContent = 'esperando paquete...';
+            mainInput.disabled = true;
+            break;
+        case 'AWAITING_DECRYPTION_KEY':
+            promptSpan.textContent = 'ingresa llave de decodificación:';
+            mainInput.type = 'password';
+            mainInput.disabled = false;
+            break;
     }
+    mainInput.focus();
+}
 
-    // 2. Pedir contraseña de rol
-    const passwordInput = window.prompt(`Ingresa la contraseña para el rol '${myRole}':`);
-    if (myRole === 'emisor' && passwordInput === SENDER_PASSWORD) {
-        displayMessage('Autenticación de emisor exitosa.', 'system-message');
-    } else if (myRole === 'receptor' && passwordInput === RECEIVER_PASSWORD) {
-        displayMessage('Autenticación de receptor exitosa.', 'system-message');
-    } else {
-        displayMessage('Error: contraseña de rol incorrecta. Recarga la página.', 'error-message');
-        return;
+// --- Manejo del input de la terminal ---
+mainInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && mainInput.value.trim() !== '') {
+        const inputValue = mainInput.value.trim();
+        mainInput.value = ''; // Limpiar input
+
+        // Mostrar el input del usuario en la terminal (excepto contraseñas)
+        if (appState !== 'AWAITING_ROLE_AUTH' && appState !== 'AWAITING_MSG_PASSWORD' && appState !== 'AWAITING_DECRYPTION_KEY') {
+            displayMessage(`> ${inputValue}`);
+        } else {
+            displayMessage(`> ********`);
+        }
+
+        handleInput(inputValue);
     }
+});
 
-    // 3. Si la autenticación es exitosa, conectar al servidor
-    socket.connect();
-    connectToServer();
+function handleInput(value) {
+    switch (appState) {
+        case 'AWAITING_ROLE':
+            if (value.toLowerCase() === 'e') myRole = 'emisor';
+            else if (value.toLowerCase() === 'r') myRole = 'receptor';
+            else {
+                displayMessage('Error: rol no válido. Usa "e" o "r".', 'error-message');
+                return;
+            }
+            appState = 'AWAITING_ROLE_AUTH';
+            break;
+
+        case 'AWAITING_ROLE_AUTH':
+            const isAuth = (myRole === 'emisor' && value === SENDER_PASSWORD) || (myRole === 'receptor' && value === RECEIVER_PASSWORD);
+            if (isAuth) {
+                displayMessage(`Autenticación de ${myRole} exitosa.`, 'system-message');
+                appState = 'CONNECTING';
+                socket.connect();
+                connectToServer();
+            } else {
+                displayMessage('Error: contraseña de rol incorrecta. Recarga la página para reintentar.', 'error-message');
+                mainInput.disabled = true;
+            }
+            break;
+
+        case 'AWAITING_MESSAGE':
+            tempMessage = value;
+            appState = 'AWAITING_MSG_PASSWORD';
+            break;
+
+        case 'AWAITING_MSG_PASSWORD':
+            encryptAndSendMessage(tempMessage, value);
+            appState = 'AWAITING_MESSAGE';
+            break;
+
+        case 'AWAITING_DECRYPTION_KEY':
+            decryptAndShowMessage(value);
+            appState = 'IDLE_RECEIVER';
+            break;
+    }
+    updatePrompt();
 }
 
 function connectToServer() {
+    displayMessage('Conectando al servidor de señalización...', 'system-message');
     socket.on('connect', () => {
-        displayMessage('Conectado al servidor de señalización...', 'system-message');
+        displayMessage('Conexión con servidor establecida.', 'system-message');
         if (myRole === 'receptor') {
             socket.emit('receptor_is_ready');
         }
     });
-
     if (myRole === 'emisor') {
         socket.on('receptor_is_ready', () => {
             displayMessage('Receptor está en línea. Iniciando conexión P2P...', 'system-message');
             setupPeer(true);
         });
     }
-
     socket.on('signal', (data) => {
-        if (!peer || peer.destroyed) {
-            setupPeer(false);
-        }
+        if (!peer || peer.destroyed) setupPeer(false);
         peer.signal(data);
     });
 }
@@ -82,27 +140,19 @@ function setupPeer(initiator) {
 
     peer.on('connect', () => {
         displayMessage('Conexión P2P establecida. Terminal lista.', 'confirmation-message');
-        inputContainer.style.display = 'flex';
-        if (myRole === 'emisor') {
-            appState = 'AWAITING_MESSAGE';
-            promptSpan.textContent = 'mensaje:';
-        } else {
-            appState = 'IDLE_RECEIVER';
-            promptSpan.textContent = 'esperando...';
-            mainInput.disabled = true;
-        }
+        if (myRole === 'emisor') appState = 'AWAITING_MESSAGE';
+        else appState = 'IDLE_RECEIVER';
+        updatePrompt();
     });
 
     peer.on('data', (data) => {
         const parsedData = JSON.parse(new TextDecoder().decode(data));
         if (parsedData.type === 'message' && myRole === 'receptor') {
             displayMessage('paquete recibido', 'system-message');
-            promptSpan.textContent = 'ingresa llave de decodificación:';
-            mainInput.disabled = false;
-            mainInput.focus();
             appState = 'AWAITING_DECRYPTION_KEY';
             currentEncryptedPayload = parsedData.payload;
             currentPayloadId = parsedData.id;
+            updatePrompt();
         } else if (parsedData.type === 'read_confirmation' && myRole === 'emisor') {
             displayMessage(`confirmación de lectura [${parsedData.id.substring(0, 8)}]`, 'confirmation-message');
         }
@@ -110,41 +160,9 @@ function setupPeer(initiator) {
 
     peer.on('close', () => {
         displayMessage('El otro usuario se ha desconectado.', 'error-message');
-        inputContainer.style.display = 'none';
+        mainInput.disabled = true;
     });
 }
-
-// --- Manejo del input de la terminal ---
-mainInput.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
-        const inputValue = mainInput.value;
-        mainInput.value = ''; // Limpiar input
-
-        switch (appState) {
-            case 'AWAITING_MESSAGE':
-                tempMessage = inputValue;
-                displayMessage(`> ${tempMessage}`);
-                promptSpan.textContent = 'contraseña del mensaje:';
-                appState = 'AWAITING_MSG_PASSWORD';
-                break;
-
-            case 'AWAITING_MSG_PASSWORD':
-                const messagePassword = inputValue;
-                encryptAndSendMessage(tempMessage, messagePassword);
-                promptSpan.textContent = 'mensaje:';
-                appState = 'AWAITING_MESSAGE';
-                break;
-
-            case 'AWAITING_DECRYPTION_KEY':
-                const decryptionKey = inputValue;
-                decryptAndShowMessage(decryptionKey);
-                promptSpan.textContent = 'esperando...';
-                mainInput.disabled = true;
-                appState = 'IDLE_RECEIVER';
-                break;
-        }
-    }
-});
 
 async function encryptAndSendMessage(message, password) {
     const uniqueId = crypto.randomUUID();
@@ -154,6 +172,7 @@ async function encryptAndSendMessage(message, password) {
         id: uniqueId,
         payload: encryptedPayload
     })));
+    displayMessage('Paquete encriptado y enviado.', 'system-message');
 }
 
 async function decryptAndShowMessage(password) {
@@ -172,16 +191,11 @@ async function decryptAndShowMessage(password) {
     }
 }
 
-// --- Lógica de Encriptación y Utilidades (sin cambios, pero necesarias) ---
+// --- Funciones de Utilidad y Criptografía (sin cambios conceptuales) ---
 function displayMessage(message, className = '') {
   const p = document.createElement('p');
   if (className) p.classList.add(className);
-  // Simular el prompt en el historial de mensajes
-  if (!className) {
-    p.textContent = message;
-  } else {
-    p.textContent = `[System] ${message}`;
-  }
+  p.textContent = message;
   messagesDiv.appendChild(p);
   messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
