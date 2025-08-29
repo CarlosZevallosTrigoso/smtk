@@ -1,30 +1,31 @@
 body {
-  background-color: #1a1a1a; /* Fondo muy oscuro, casi negro */
-  color: #00ff00; /* Texto verde brillante tipo terminal */
-  font-family: 'Hack', 'Fira Code', 'JetBrains Mono', 'Courier New', Courier, monospace;
+  background-color: #f0f0f0; /* Fondo blanco-gris muy claro */
+  color: #000000; /* Texto negro */
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace; /* Fuentes de terminal iOS/macOS */
   font-size: 0.95rem;
   margin: 0;
-  padding: 10px;
+  padding: 0;
   display: flex;
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  overflow: hidden; /* Evita barras de desplazamiento externas */
+  overflow: hidden;
 }
 
-/* Contenedor principal para la terminal */
+/* Contenedor principal de la terminal */
 #terminal-container {
   width: 90%;
-  max-width: 900px;
+  max-width: 800px; /* Un poco más estrecho para un look más de terminal de iOS */
   height: 90vh;
-  border: 2px solid #00ff00; /* Borde verde brillante */
+  border: 1px solid #ccc; /* Borde suave */
+  border-radius: 8px; /* Esquinas ligeramente redondeadas */
   display: flex;
   flex-direction: column;
-  box-shadow: 0 0 15px rgba(0, 255, 0, 0.5); /* Efecto de brillo */
-  background-color: #000000; /* Interior negro puro */
-  box-sizing: border-box; /* Incluye padding y border en el tamaño total */
-  resize: vertical; /* Permite redimensionar verticalmente */
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); /* Sombra sutil */
+  background-color: #ffffff; /* Interior blanco puro */
+  box-sizing: border-box;
   overflow: hidden;
+  position: relative; /* Para el cursor */
 }
 
 /* Área de mensajes */
@@ -32,35 +33,40 @@ body {
   flex-grow: 1;
   padding: 15px;
   overflow-y: auto;
-  border-bottom: 1px solid rgba(0, 255, 0, 0.3); /* Separador suave */
-  line-height: 1.4;
-  white-space: pre-wrap; /* Mantiene saltos de línea y espacios */
-  word-break: break-word; /* Rompe palabras largas */
+  border-bottom: 1px solid #eee; /* Separador muy sutil */
+  line-height: 1.5; /* Más espacio entre líneas */
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.9em; /* Mensajes ligeramente más pequeños */
 }
 
+/* Scrollbar minimalista */
 #messages::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
 }
 #messages::-webkit-scrollbar-track {
-  background: #333;
+  background: #f8f8f8;
 }
 #messages::-webkit-scrollbar-thumb {
-  background: #008800;
-  border-radius: 4px;
+  background: #cccccc;
+  border-radius: 3px;
+}
+#messages::-webkit-scrollbar-thumb:hover {
+  background: #b0b0b0;
 }
 
 /* Líneas de entrada */
 .input-line {
   display: flex;
   align-items: center;
-  padding: 8px 15px;
+  padding: 10px 15px;
+  gap: 8px; /* Espacio entre elementos de entrada */
 }
 
 /* El prompt de la terminal */
 .prompt {
-  color: #00ff00;
-  margin-right: 8px;
-  white-space: nowrap; /* Evita que el prompt se rompa */
+  color: #333; /* Prompt un poco más tenue que el texto principal */
+  white-space: nowrap;
 }
 
 /* Estilo general para inputs */
@@ -68,55 +74,56 @@ input[type="text"],
 input[type="password"] {
   background-color: transparent;
   border: none;
-  color: #00ff00;
+  color: #000;
   font-family: inherit;
   font-size: 0.95rem;
   outline: none;
   flex-grow: 1;
   padding: 5px 0;
-  caret-color: #00ff00; /* Cursor verde */
+  caret-color: #000; /* Cursor negro */
 }
 
 input::placeholder {
-  color: rgba(0, 255, 0, 0.5); /* Placeholder más tenue */
+  color: #999; /* Placeholder más tenue */
 }
 
 /* Estilo general para botones */
 button {
-  background-color: transparent;
-  border: 1px solid #00ff00;
-  color: #00ff00;
+  background-color: #e0e0e0; /* Fondo de botón gris claro */
+  border: 1px solid #ccc;
+  color: #000;
   font-family: inherit;
-  font-size: 0.9rem;
-  padding: 5px 10px;
-  margin-left: 10px;
+  font-size: 0.85rem; /* Botones ligeramente más pequeños */
+  padding: 6px 12px;
+  border-radius: 4px; /* Esquinas más suaves */
   cursor: pointer;
   transition: all 0.2s ease-in-out;
   white-space: nowrap;
 }
 
 button:hover {
-  background-color: #00ff00;
-  color: #1a1a1a;
-  box-shadow: 0 0 8px rgba(0, 255, 0, 0.7);
+  background-color: #d0d0d0;
+  border-color: #b0b0b0;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.05);
 }
 
 button:active {
   transform: translateY(1px);
 }
 
-/* Visibilidad de los roles - se maneja con JS */
+/* Ocultar inputs por defecto, JS los mostrará */
 #sender-input, #reader-input {
-  display: none; /* Por defecto ocultos */
+  display: none;
 }
-/* El JS mostrará el correcto */
 
 /* Estilos específicos para mensajes */
 .system-message {
-  color: #ffaa00; /* Mensajes de sistema en naranja */
+  color: #666; /* Mensajes de sistema en gris */
+  font-size: 0.85em; /* Ligeramente más pequeños */
 }
 
 .read-confirmation {
-  color: #00ffff; /* Confirmación de lectura en cian */
+  color: #007aff; /* Confirmación de lectura en azul iOS */
   font-style: italic;
+  font-size: 0.8em;
 }
