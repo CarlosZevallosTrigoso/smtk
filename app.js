@@ -1,229 +1,207 @@
 // 🔽🔽🔽 Pega aquí la URL de tu servidor de Render 🔽🔽🔽
-const socket = io('https://smtk-server.onrender.com');
+const socket = io('https://smtk-server.onrender.com', { autoConnect: false });
 
 // --- Referencias a elementos del DOM ---
 const messagesDiv = document.getElementById('messages');
-const senderInputDiv = document.getElementById('sender-input');
-const readerInputDiv = document.getElementById('reader-input');
-const faPromptSpan = document.getElementById('fa-prompt');
-const fbPromptSpan = document.getElementById('fb-prompt');
-const messageInput = document.getElementById('message-input');
-const passwordInput = document.getElementById('password-input');
-const sendButton = document.getElementById('send-button');
-const decryptPasswordInput = document.getElementById('decrypt-password-input');
-const decryptButton = document.getElementById('decrypt-button');
+const mainInput = document.getElementById('main-input');
+const promptSpan = document.getElementById('prompt');
+const inputContainer = document.getElementById('input-container');
 
+// --- Variables de estado de la aplicación ---
+let myRole = null; // 'emisor' o 'receptor'
+let appState = 'AWAITING_ROLE'; // Controla el flujo de la aplicación
+let tempMessage = ''; // Almacena el mensaje del emisor temporalmente
 let peer;
-let myRole; // Guardará si somos 'fa' o 'fb'
-let currentEncryptedPayload = null; // Para almacenar el último mensaje encriptado recibido
-let currentPayloadId = null; // ID único para el payload
+let currentEncryptedPayload = null;
+let currentPayloadId = null;
 
-// --- Inicialización y manejo de roles ---
+// --- Contraseñas de rol (hardcoded) ---
+const SENDER_PASSWORD = 'carlos123';
+const RECEIVER_PASSWORD = 'carlosxyz';
+
+// --- Inicio de la aplicación ---
 window.onload = () => {
-    const hash = location.hash.substring(1); // Obtiene 'fa' o 'fb' de la URL
-    if (hash === 'fa') {
-        myRole = 'fa';
-        senderInputDiv.style.display = 'flex'; // Mostrar interfaz de emisor
-        faPromptSpan.textContent = 'fa@smtk:~ $ ';
-        displayMessage('System: Rol asignado: fa (Emisor). Esperando conexión...');
-    } else if (hash === 'fb') {
-        myRole = 'fb';
-        readerInputDiv.style.display = 'flex'; // Mostrar interfaz de receptor
-        fbPromptSpan.textContent = 'fb@smtk:~ $ ';
-        displayMessage('System: Rol asignado: fb (Receptor). Esperando conexión...');
+    inputContainer.style.display = 'none'; // Ocultar input al inicio
+    authenticateUser();
+};
+
+async function authenticateUser() {
+    // 1. Preguntar el rol
+    const roleInput = window.prompt("emites o recibes (e/r)");
+    if (roleInput && roleInput.toLowerCase() === 'e') {
+        myRole = 'emisor';
+    } else if (roleInput && roleInput.toLowerCase() === 'r') {
+        myRole = 'receptor';
     } else {
-        displayMessage('System: URL inválida. Usa #fa o #fb al final para asignar un rol. Ej: yoururl.com/#fa', 'system-message');
+        displayMessage('Error: rol no válido. Recarga la página.', 'error-message');
         return;
     }
 
-    connectToServer(); // Iniciar la conexión al servidor de señalización
-};
+    // 2. Pedir contraseña de rol
+    const passwordInput = window.prompt(`Ingresa la contraseña para el rol '${myRole}':`);
+    if (myRole === 'emisor' && passwordInput === SENDER_PASSWORD) {
+        displayMessage('Autenticación de emisor exitosa.', 'system-message');
+    } else if (myRole === 'receptor' && passwordInput === RECEIVER_PASSWORD) {
+        displayMessage('Autenticación de receptor exitosa.', 'system-message');
+    } else {
+        displayMessage('Error: contraseña de rol incorrecta. Recarga la página.', 'error-message');
+        return;
+    }
+
+    // 3. Si la autenticación es exitosa, conectar al servidor
+    socket.connect();
+    connectToServer();
+}
 
 function connectToServer() {
     socket.on('connect', () => {
-        displayMessage('System: Conectado al servidor de señalización...');
-
-        // Lógica de "aviso"
-        if (myRole === 'fb') {
-            socket.emit('fb_is_ready'); // fb avisa al servidor que está listo
-            displayMessage('System: Avisando a fa que fb está listo...', 'system-message');
+        displayMessage('Conectado al servidor de señalización...', 'system-message');
+        if (myRole === 'receptor') {
+            socket.emit('receptor_is_ready');
         }
     });
 
-    // fa escucha el aviso de fb
-    if (myRole === 'fa') {
-        socket.on('fb_is_ready', () => {
-            displayMessage('System: fb está conectado. Iniciando conexión P2P...', 'system-message');
-            setupPeer(true); // Solo ahora fa inicia la conexión
+    if (myRole === 'emisor') {
+        socket.on('receptor_is_ready', () => {
+            displayMessage('Receptor está en línea. Iniciando conexión P2P...', 'system-message');
+            setupPeer(true);
         });
     }
 
     socket.on('signal', (data) => {
-        if (!peer || peer.destroyed) { // Si no hay peer o está destruido, crear uno (para fb)
+        if (!peer || peer.destroyed) {
             setupPeer(false);
         }
         peer.signal(data);
     });
-
-    socket.on('disconnect', () => {
-        displayMessage('System: Desconectado del servidor de señalización. Reintentando...', 'system-message');
-        // Podrías añadir lógica de reconexión aquí si lo deseas
-    });
 }
 
 function setupPeer(initiator) {
-    if (peer && !peer.destroyed) { // Si ya hay un peer activo, no crear otro
-        return;
-    }
-
-    peer = new SimplePeer({
-        initiator: initiator,
-        trickle: false
-    });
-
-    peer.on('signal', (data) => {
-        socket.emit('signal', data);
-    });
+    if (peer && !peer.destroyed) return;
+    peer = new SimplePeer({ initiator, trickle: false });
 
     peer.on('connect', () => {
-        displayMessage(`System: Conexión P2P establecida. [user: ${myRole}]`, 'system-message');
-        // Limpiar los campos de input al conectar
-        messageInput.value = '';
-        passwordInput.value = '';
-        decryptPasswordInput.value = '';
+        displayMessage('Conexión P2P establecida. Terminal lista.', 'confirmation-message');
+        inputContainer.style.display = 'flex';
+        if (myRole === 'emisor') {
+            appState = 'AWAITING_MESSAGE';
+            promptSpan.textContent = 'mensaje:';
+        } else {
+            appState = 'IDLE_RECEIVER';
+            promptSpan.textContent = 'esperando...';
+            mainInput.disabled = true;
+        }
     });
 
-    peer.on('data', async (data) => {
+    peer.on('data', (data) => {
         const parsedData = JSON.parse(new TextDecoder().decode(data));
-
-        if (parsedData.type === 'message' && myRole === 'fb') {
-            displayMessage('System: Mensaje encriptado recibido. Introduce la contraseña para leerlo.', 'system-message');
-            currentEncryptedPayload = parsedData.payload; // Guardar el payload encriptado
-            currentPayloadId = parsedData.id; // Guardar el ID para la confirmación
-            decryptPasswordInput.focus(); // Enfocar el campo de contraseña
-        } else if (parsedData.type === 'read_confirmation' && myRole === 'fa') {
-            displayMessage(`System: Mensaje [ID: ${parsedData.id.substring(0, 8)}...] leído por fb.`, 'read-confirmation');
+        if (parsedData.type === 'message' && myRole === 'receptor') {
+            displayMessage('paquete recibido', 'system-message');
+            promptSpan.textContent = 'ingresa llave de decodificación:';
+            mainInput.disabled = false;
+            mainInput.focus();
+            appState = 'AWAITING_DECRYPTION_KEY';
+            currentEncryptedPayload = parsedData.payload;
+            currentPayloadId = parsedData.id;
+        } else if (parsedData.type === 'read_confirmation' && myRole === 'emisor') {
+            displayMessage(`confirmación de lectura [${parsedData.id.substring(0, 8)}]`, 'confirmation-message');
         }
     });
 
     peer.on('close', () => {
-        displayMessage('System: El otro usuario se ha desconectado.', 'system-message');
-        peer.destroy(); // Limpiar el peer
-        peer = null;
-        currentEncryptedPayload = null; // Limpiar cualquier payload pendiente
-    });
-
-    peer.on('error', (err) => {
-        displayMessage(`System: Error de conexión P2P - ${err.message}`, 'system-message');
-        if (peer && !peer.destroyed) peer.destroy();
-        peer = null;
-        currentEncryptedPayload = null;
+        displayMessage('El otro usuario se ha desconectado.', 'error-message');
+        inputContainer.style.display = 'none';
     });
 }
 
-// --- Lógica de Encriptación/Desencriptación por Mensaje ---
-async function deriveKey(password, salt) {
-    const encoder = new TextEncoder();
-    const baseKey = await window.crypto.subtle.importKey(
-        'raw', encoder.encode(password), { name: 'PBKDF2' }, false, ['deriveKey']
-    );
-    return window.crypto.subtle.deriveKey(
-        { name: 'PBKDF2', salt: salt, iterations: 100000, hash: 'SHA-256' },
-        baseKey, { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']
-    );
-}
+// --- Manejo del input de la terminal ---
+mainInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+        const inputValue = mainInput.value;
+        mainInput.value = ''; // Limpiar input
 
-async function encryptMessage(message, password) {
-    const salt = window.crypto.getRandomValues(new Uint8Array(16));
-    const iv = window.crypto.getRandomValues(new Uint8Array(12));
-    const key = await deriveKey(password, salt);
-    const encryptedData = await window.crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv: iv }, key, new TextEncoder().encode(message)
-    );
-    return {
-        salt: Array.from(salt),
-        iv: Array.from(iv),
-        ciphertext: Array.from(new Uint8Array(encryptedData))
-    };
-}
+        switch (appState) {
+            case 'AWAITING_MESSAGE':
+                tempMessage = inputValue;
+                displayMessage(`> ${tempMessage}`);
+                promptSpan.textContent = 'contraseña del mensaje:';
+                appState = 'AWAITING_MSG_PASSWORD';
+                break;
 
-async function decryptMessage(payload, password) {
-    const salt = new Uint8Array(payload.salt);
-    const iv = new Uint8Array(payload.iv);
-    const ciphertext = new Uint8Array(payload.ciphertext);
-    const key = await deriveKey(password, salt);
-    const decryptedData = await window.crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv: iv }, key, ciphertext
-    );
-    return new TextDecoder().decode(decryptedData);
-}
+            case 'AWAITING_MSG_PASSWORD':
+                const messagePassword = inputValue;
+                encryptAndSendMessage(tempMessage, messagePassword);
+                promptSpan.textContent = 'mensaje:';
+                appState = 'AWAITING_MESSAGE';
+                break;
 
-// --- Lógica de Envío (Solo fa) ---
-sendButton.addEventListener('click', async () => {
-    if (myRole !== 'fa') {
-        displayMessage('Error: Solo fa puede enviar mensajes.', 'system-message');
-        return;
-    }
-    const message = messageInput.value;
-    const password = passwordInput.value;
-    if (message && password && peer && peer.connected) {
-        displayMessage(`fa@smtk:~ $ ${message}`); // Muestra el mensaje localmente
-        const uniqueId = crypto.randomUUID(); // Genera un ID único para el mensaje
-        const encryptedPayload = await encryptMessage(message, password);
-
-        // Enviar un objeto que indica que es un mensaje y lleva el payload
-        peer.send(new TextEncoder().encode(JSON.stringify({
-            type: 'message',
-            id: uniqueId,
-            payload: encryptedPayload
-        })));
-
-        messageInput.value = '';
-        passwordInput.value = '';
-    } else {
-        displayMessage('System: Mensaje o contraseña vacíos, o no conectado.', 'system-message');
-    }
-});
-
-// --- Lógica de Lectura (Solo fb) ---
-decryptButton.addEventListener('click', async () => {
-    if (myRole !== 'fb') {
-        displayMessage('Error: Solo fb puede leer mensajes.', 'system-message');
-        return;
-    }
-    const password = decryptPasswordInput.value;
-    if (password && currentEncryptedPayload && peer && peer.connected) {
-        try {
-            const decrypted = await decryptMessage(currentEncryptedPayload, password);
-            displayMessage(`fb@smtk:~ $ ${decrypted}`); // Muestra el mensaje desencriptado
-
-            // Enviar confirmación de lectura a fa
-            peer.send(new TextEncoder().encode(JSON.stringify({
-                type: 'read_confirmation',
-                id: currentPayloadId
-            })));
-            displayMessage('System: Confirmación de lectura enviada.', 'read-confirmation');
-
-            currentEncryptedPayload = null; // Limpiar mensaje después de leer
-            currentPayloadId = null; // Limpiar el ID
-            decryptPasswordInput.value = ''; // Limpiar el campo de contraseña
-
-        } catch (e) {
-            displayMessage('Error: Contraseña incorrecta o mensaje corrupto.', 'system-message');
-            console.error('Error al desencriptar:', e);
+            case 'AWAITING_DECRYPTION_KEY':
+                const decryptionKey = inputValue;
+                decryptAndShowMessage(decryptionKey);
+                promptSpan.textContent = 'esperando...';
+                mainInput.disabled = true;
+                appState = 'IDLE_RECEIVER';
+                break;
         }
-    } else {
-        displayMessage('System: No hay mensaje para leer o contraseña vacía.', 'system-message');
     }
 });
 
-// --- Utilidad para mostrar mensajes en la terminal ---
-function displayMessage(message, type = '') {
+async function encryptAndSendMessage(message, password) {
+    const uniqueId = crypto.randomUUID();
+    const encryptedPayload = await encryptMessage(message, password);
+    peer.send(new TextEncoder().encode(JSON.stringify({
+        type: 'message',
+        id: uniqueId,
+        payload: encryptedPayload
+    })));
+}
+
+async function decryptAndShowMessage(password) {
+    try {
+        const decrypted = await decryptMessage(currentEncryptedPayload, password);
+        displayMessage(`> ${decrypted}`);
+        peer.send(new TextEncoder().encode(JSON.stringify({
+            type: 'read_confirmation',
+            id: currentPayloadId
+        })));
+    } catch (e) {
+        displayMessage('Error: llave de decodificación incorrecta.', 'error-message');
+    } finally {
+        currentEncryptedPayload = null;
+        currentPayloadId = null;
+    }
+}
+
+// --- Lógica de Encriptación y Utilidades (sin cambios, pero necesarias) ---
+function displayMessage(message, className = '') {
   const p = document.createElement('p');
-  p.textContent = message;
-  if (type) {
-    p.classList.add(type);
+  if (className) p.classList.add(className);
+  // Simular el prompt en el historial de mensajes
+  if (!className) {
+    p.textContent = message;
+  } else {
+    p.textContent = `[System] ${message}`;
   }
   messagesDiv.appendChild(p);
-  messagesDiv.scrollTop = messagesDiv.scrollHeight; // Auto-scroll
+  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+}
+async function deriveKey(password, salt) {
+  const encoder = new TextEncoder();
+  const baseKey = await window.crypto.subtle.importKey('raw', encoder.encode(password), { name: 'PBKDF2' }, false, ['deriveKey']);
+  return window.crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' }, baseKey, { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+}
+async function encryptMessage(message, password) {
+  const salt = window.crypto.getRandomValues(new Uint8Array(16));
+  const iv = window.crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveKey(password, salt);
+  const encryptedData = await window.crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(message));
+  return { salt: Array.from(salt), iv: Array.from(iv), ciphertext: Array.from(new Uint8Array(encryptedData)) };
+}
+async function decryptMessage(payload, password) {
+  const salt = new Uint8Array(payload.salt);
+  const iv = new Uint8Array(payload.iv);
+  const ciphertext = new Uint8Array(payload.ciphertext);
+  const key = await deriveKey(password, salt);
+  const decryptedData = await window.crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+  return new TextDecoder().decode(decryptedData);
 }
