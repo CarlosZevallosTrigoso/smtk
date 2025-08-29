@@ -11,14 +11,14 @@
     <div id="messages"></div>
     <div id="input-area">
       <div id="sender-input" class="input-line">
-        <span class="prompt">fa@smtk:~ $ </span>
-        <input type="text" id="message-input" placeholder="Escribir mensaje..." autocomplete="off">
-        <input type="password" id="password-input" placeholder="Contraseña..." autocomplete="off">
+        <span class="prompt" id="fa-prompt"></span> 
+        <input type="text" id="message-input" placeholder="mensaje..." autocomplete="off">
+        <input type="password" id="password-input" placeholder="contraseña..." autocomplete="off">
         <button id="send-button">Enviar</button>
       </div>
       <div id="reader-input" class="input-line">
-        <span class="prompt">fb@smtk:~ $ </span>
-        <input type="password" id="decrypt-password-input" placeholder="Contraseña para leer..." autocomplete="off">
+        <span class="prompt" id="fb-prompt"></span>
+        <input type="password" id="decrypt-password-input" placeholder="contraseña para leer..." autocomplete="off">
         <button id="decrypt-button">Leer</button>
       </div>
     </div>
