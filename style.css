@@ -1,59 +1,122 @@
 body {
-  background-color: #ffffff;
-  color: #000000;
-  font-family: 'Courier New', Courier, monospace;
+  background-color: #1a1a1a; /* Fondo muy oscuro, casi negro */
+  color: #00ff00; /* Texto verde brillante tipo terminal */
+  font-family: 'Hack', 'Fira Code', 'JetBrains Mono', 'Courier New', Courier, monospace;
+  font-size: 0.95rem;
   margin: 0;
-  padding: 1rem;
+  padding: 10px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  overflow: hidden; /* Evita barras de desplazamiento externas */
 }
-#terminal {
-  border: 1px solid #000;
+
+/* Contenedor principal para la terminal */
+#terminal-container {
+  width: 90%;
+  max-width: 900px;
   height: 90vh;
+  border: 2px solid #00ff00; /* Borde verde brillante */
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  box-shadow: 0 0 15px rgba(0, 255, 0, 0.5); /* Efecto de brillo */
+  background-color: #000000; /* Interior negro puro */
+  box-sizing: border-box; /* Incluye padding y border en el tamaño total */
+  resize: vertical; /* Permite redimensionar verticalmente */
+  overflow: hidden;
 }
+
+/* Área de mensajes */
 #messages {
-  padding: 1rem;
-  overflow-y: auto;
   flex-grow: 1;
-}
-#messages p {
-  margin: 0;
+  padding: 15px;
+  overflow-y: auto;
+  border-bottom: 1px solid rgba(0, 255, 0, 0.3); /* Separador suave */
   line-height: 1.4;
-  word-break: break-all;
+  white-space: pre-wrap; /* Mantiene saltos de línea y espacios */
+  word-break: break-word; /* Rompe palabras largas */
 }
-#input-line {
+
+#messages::-webkit-scrollbar {
+  width: 8px;
+}
+#messages::-webkit-scrollbar-track {
+  background: #333;
+}
+#messages::-webkit-scrollbar-thumb {
+  background: #008800;
+  border-radius: 4px;
+}
+
+/* Líneas de entrada */
+.input-line {
   display: flex;
-  border-top: 1px solid #000;
-  padding: 0.5rem;
+  align-items: center;
+  padding: 8px 15px;
 }
+
+/* El prompt de la terminal */
 .prompt {
-  margin-right: 0.5rem;
-  line-height: 1.5rem;
+  color: #00ff00;
+  margin-right: 8px;
+  white-space: nowrap; /* Evita que el prompt se rompa */
 }
-input {
+
+/* Estilo general para inputs */
+input[type="text"],
+input[type="password"] {
   background-color: transparent;
   border: none;
-  color: #000;
+  color: #00ff00;
   font-family: inherit;
+  font-size: 0.95rem;
   outline: none;
-  font-size: 1rem;
-}
-#message-input {
   flex-grow: 1;
+  padding: 5px 0;
+  caret-color: #00ff00; /* Cursor verde */
 }
-#password-input {
-  width: 150px;
+
+input::placeholder {
+  color: rgba(0, 255, 0, 0.5); /* Placeholder más tenue */
 }
-#send-button {
+
+/* Estilo general para botones */
+button {
   background-color: transparent;
-  border: 1px solid #000;
-  color: #000;
+  border: 1px solid #00ff00;
+  color: #00ff00;
   font-family: inherit;
+  font-size: 0.9rem;
+  padding: 5px 10px;
+  margin-left: 10px;
   cursor: pointer;
-  margin-left: 0.5rem;
+  transition: all 0.2s ease-in-out;
+  white-space: nowrap;
 }
-#send-button:hover {
-  background-color: #000;
-  color: #fff;
+
+button:hover {
+  background-color: #00ff00;
+  color: #1a1a1a;
+  box-shadow: 0 0 8px rgba(0, 255, 0, 0.7);
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+/* Visibilidad de los roles - se maneja con JS */
+#sender-input, #reader-input {
+  display: none; /* Por defecto ocultos */
+}
+/* El JS mostrará el correcto */
+
+/* Estilos específicos para mensajes */
+.system-message {
+  color: #ffaa00; /* Mensajes de sistema en naranja */
+}
+
+.read-confirmation {
+  color: #00ffff; /* Confirmación de lectura en cian */
+  font-style: italic;
 }
