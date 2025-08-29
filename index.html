@@ -3,24 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>smtk Terminal</title>
+  <title>smtk</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div id="terminal-container">
+  <div id="terminal">
     <div id="messages"></div>
-    <div id="input-area">
-      <div id="sender-input" class="input-line">
-        <span class="prompt" id="fa-prompt"></span> 
-        <input type="text" id="message-input" placeholder="mensaje..." autocomplete="off">
-        <input type="password" id="password-input" placeholder="contraseña..." autocomplete="off">
-        <button id="send-button">Enviar</button>
-      </div>
-      <div id="reader-input" class="input-line">
-        <span class="prompt" id="fb-prompt"></span>
-        <input type="password" id="decrypt-password-input" placeholder="contraseña para leer..." autocomplete="off">
-        <button id="decrypt-button">Leer</button>
-      </div>
+    <div class="input-line" id="input-container">
+      <span id="prompt">></span>
+      <input type="text" id="main-input" autocomplete="off" autofocus>
     </div>
   </div>
 
